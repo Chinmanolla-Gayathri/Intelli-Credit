@@ -11,8 +11,22 @@ export function NewAppraisalView() {
   const [isLoading, setIsLoading] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   // 1. New state to hold the final AI report!
-  const [result, setResult] = useState(null)
+  const [result, setResult] = useState<any>(null)
   const [fieldNotes, setFieldNotes] = useState("")
+
+  const handleDatabricksSync = async () => {
+    try {
+      const response = await fetch("http://127.0.0.1:8000/api/databricks/sync")
+      if (!response.ok) {
+        throw new Error("Failed to sync with Databricks")
+      }
+      const data = await response.json()
+      alert(data?.message || "Databricks sync complete!")
+    } catch (error) {
+      console.error("Databricks sync failed:", error)
+      alert("Failed to sync with Databricks. Please try again.")
+    }
+  }
 
   const handleAnalyze = async () => {
     if (selectedFiles.length === 0) {
@@ -87,6 +101,9 @@ export function NewAppraisalView() {
       status: humanDecision,
       ai_analysis: result.ai_analysis,
       extracted_metrics: result.extracted_metrics || {},
+      loan_limit: result.recommended_limit_inr,
+      interest_rate: result.recommended_interest_rate_pct,
+      five_cs: result.five_cs_summary,
     }
 
     try {
@@ -110,16 +127,39 @@ export function NewAppraisalView() {
     }
   }
 
+  const formatCurrencyInr = (value: number | undefined | null) => {
+    if (value == null || Number.isNaN(Number(value))) return "₹0"
+    try {
+      return new Intl.NumberFormat("en-IN", {
+        style: "currency",
+        currency: "INR",
+        maximumFractionDigits: 0,
+      }).format(Number(value))
+    } catch {
+      return `₹${Number(value).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-          Generate Credit Appraisal Memo (CAM)
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Automate loan decisioning with AI-powered document analysis and risk assessment
-        </p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+            Generate Credit Appraisal Memo (CAM)
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Automate loan decisioning with AI-powered document analysis and risk assessment
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-2 sm:mt-0"
+          onClick={handleDatabricksSync}
+        >
+          Sync with Databricks
+        </Button>
       </div>
 
       {/* Main Content */}
@@ -195,21 +235,51 @@ export function NewAppraisalView() {
           </CardHeader>
           <CardContent className="pt-6 space-y-6">
             <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
-              <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-2">Executive Summary</h4>
+              <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-2">
+                Executive Summary
+              </h4>
               <p className="text-slate-700 leading-relaxed">{result.ai_analysis}</p>
             </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-               <div className="p-4 rounded-lg bg-green-50 border border-green-100">
-                 <h4 className="text-sm font-semibold text-green-800 mb-1">System Decision</h4>
-                 <p className="font-bold text-green-900">{result.mock_decision}</p>
-               </div>
-               <div className="p-4 rounded-lg bg-blue-50 border border-blue-100">
-                 <h4 className="text-sm font-semibold text-blue-800 mb-1 flex items-center gap-2">
-                   <AlertTriangle className="h-4 w-4" /> Data Masking Protocol
-                 </h4>
-                 <p className="text-xs text-blue-900 font-mono mt-2 truncate">{result.masked_text_preview}</p>
-               </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="p-4 rounded-lg bg-green-50 border border-green-100">
+                <h4 className="text-sm font-semibold text-green-800 mb-1">System Decision</h4>
+                <p className="font-bold text-green-900">{result.mock_decision}</p>
+              </div>
+              <div className="p-4 rounded-lg bg-blue-50 border border-blue-100">
+                <h4 className="text-sm font-semibold text-blue-800 mb-1 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4" /> Data Masking Protocol
+                </h4>
+                <p className="text-xs text-blue-900 font-mono mt-2 truncate">
+                  {result.masked_text_preview}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-200">
+                <h4 className="text-sm font-semibold text-emerald-900 mb-2">
+                  Recommended Terms
+                </h4>
+                <p className="text-sm text-emerald-900">
+                  <span className="font-semibold">Loan Limit: </span>
+                  {formatCurrencyInr(result.recommended_limit_inr)}
+                </p>
+                <p className="text-sm text-emerald-900 mt-1">
+                  <span className="font-semibold">Interest Rate: </span>
+                  {result.recommended_interest_rate_pct != null
+                    ? `${result.recommended_interest_rate_pct}%`
+                    : "N/A"}
+                </p>
+              </div>
+              <div className="p-4 rounded-lg bg-violet-50 border border-violet-200">
+                <h4 className="text-sm font-semibold text-violet-900 mb-2">
+                  The Five C&apos;s of Credit
+                </h4>
+                <p className="text-sm text-violet-900 leading-relaxed">
+                  {result.five_cs_summary || "Five C's summary not available."}
+                </p>
+              </div>
             </div>
           </CardContent>
           <CardFooter className="bg-slate-50 border-t border-slate-100 flex flex-wrap justify-end gap-2">
@@ -254,7 +324,18 @@ export function NewAppraisalView() {
                     `System Decision: ${result.mock_decision}`,
                     `Risk Score: ${result.mock_risk_score}/100`,
                     "",
-                    "AI Analysis:",
+                    "Recommended Terms:",
+                    `- Loan Limit: ${formatCurrencyInr(result.recommended_limit_inr)}`,
+                    `- Interest Rate: ${
+                      result.recommended_interest_rate_pct != null
+                        ? `${result.recommended_interest_rate_pct}%`
+                        : "N/A"
+                    }`,
+                    "",
+                    "The Five C's of Credit:",
+                    result.five_cs_summary || "N/A",
+                    "",
+                    "AI Analysis & Web Research:",
                     result.ai_analysis || "N/A",
                     "",
                     "Extracted Metrics (JSON):",

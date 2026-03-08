@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 interface UploadedFile {
   id: string
   name: string
-  type: "pdf" | "zip"
+  type: "pdf" | "zip" | "csv"
   size: string
 }
 
@@ -47,7 +47,11 @@ export function FileUpload({ onFilesSelected }: FileUploadProps) {
       const mappedFiles: UploadedFile[] = filesArray.map((file, index) => ({
         id: `${file.name}-${index}-${file.lastModified}`,
         name: file.name,
-        type: file.name.toLowerCase().endsWith(".zip") ? "zip" : "pdf",
+        type: file.name.toLowerCase().endsWith(".zip")
+          ? "zip"
+          : file.name.toLowerCase().endsWith(".csv")
+            ? "csv"
+            : "pdf",
         size: formatFileSize(file.size),
       }))
 
@@ -106,7 +110,7 @@ export function FileUpload({ onFilesSelected }: FileUploadProps) {
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".pdf,.zip"
+            accept=".pdf,.zip,.csv"
             className="hidden"
             onChange={handleFileInputChange}
           />
@@ -117,7 +121,7 @@ export function FileUpload({ onFilesSelected }: FileUploadProps) {
             Drag & drop files here
           </p>
           <p className="mb-4 text-sm text-muted-foreground">
-            Upload Company Documents (.zip, or multiple .pdf files)
+            Upload Company Documents (.zip, .csv, or multiple .pdf files)
           </p>
           <Button
             variant="outline"
@@ -145,10 +149,10 @@ export function FileUpload({ onFilesSelected }: FileUploadProps) {
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                    {file.type === "pdf" ? (
-                      <FileText className="h-5 w-5 text-primary" />
-                    ) : (
+                    {file.type === "zip" ? (
                       <FileArchive className="h-5 w-5 text-primary" />
+                    ) : (
+                      <FileText className="h-5 w-5 text-primary" />
                     )}
                   </div>
                   <div>
