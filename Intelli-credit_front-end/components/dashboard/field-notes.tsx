@@ -1,11 +1,14 @@
 "use client"
 
-import { useState } from "react"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 
-export function FieldNotes() {
-  const [notes, setNotes] = useState("")
+interface FieldNotesProps {
+  value: string
+  onChange: (value: string) => void
+}
+
+export function FieldNotes({ value, onChange }: FieldNotesProps) {
 
   return (
     <div className="space-y-3">
@@ -17,8 +20,8 @@ export function FieldNotes() {
       </Label>
       <Textarea
         id="field-notes"
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
         placeholder="Enter observations from factory visits or management interviews..."
         className="min-h-[140px] resize-none bg-card text-sm placeholder:text-muted-foreground/60"
       />

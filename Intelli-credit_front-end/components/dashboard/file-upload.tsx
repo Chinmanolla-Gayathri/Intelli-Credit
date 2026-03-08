@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
+import type React from "react"
 import { CloudUpload, FileText, Check, Trash2, FileArchive } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -12,31 +13,74 @@ interface UploadedFile {
   size: string
 }
 
+interface FileUploadProps {
+  onFilesSelected?: (files: File[]) => void
+}
+
+const formatFileSize = (bytes: number): string => {
+  if (!bytes) return "0 B"
+  const k = 1024
+  const sizes = ["B", "KB", "MB", "GB"]
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1)
+  const size = parseFloat((bytes / Math.pow(k, i)).toFixed(1))
+  return `${size} ${sizes[i]}`
+}
+
 const initialFiles: UploadedFile[] = [
   { id: "1", name: "GST_Filing_2025.pdf", type: "pdf", size: "2.4 MB" },
   { id: "2", name: "Bank_Statement.pdf", type: "pdf", size: "1.8 MB" },
   { id: "3", name: "Annual_Report.zip", type: "zip", size: "15.2 MB" },
 ]
-
-export function FileUpload() {
+export function FileUpload({ onFilesSelected }: FileUploadProps) {
   const [files, setFiles] = useState<UploadedFile[]>(initialFiles)
   const [isDragging, setIsDragging] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
+  const handleFiles = useCallback(
+    (fileList: FileList | null) => {
+      if (!fileList) return
+
+      const filesArray = Array.from(fileList)
+
+      onFilesSelected?.(filesArray)
+
+      const mappedFiles: UploadedFile[] = filesArray.map((file, index) => ({
+        id: `${file.name}-${index}-${file.lastModified}`,
+        name: file.name,
+        type: file.name.toLowerCase().endsWith(".zip") ? "zip" : "pdf",
+        size: formatFileSize(file.size),
+      }))
+
+      setFiles(mappedFiles)
+    },
+    [onFilesSelected],
+  )
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     setIsDragging(true)
   }, [])
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     setIsDragging(false)
   }, [])
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
-    // Handle file drop logic here
-  }, [])
+  const handleDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      setIsDragging(false)
+      handleFiles(e.dataTransfer.files)
+    },
+    [handleFiles],
+  )
+
+  const handleFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      handleFiles(e.target.files)
+    },
+    [handleFiles],
+  )
 
   const removeFile = (id: string) => {
     setFiles(files.filter((file) => file.id !== id))
@@ -49,6 +93,7 @@ export function FileUpload() {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
         className={cn(
           "relative flex min-h-[200px] flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 transition-all",
           isDragging
@@ -57,6 +102,14 @@ export function FileUpload() {
         )}
       >
         <div className="flex flex-col items-center text-center">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.zip"
+            className="hidden"
+            onChange={handleFileInputChange}
+          />
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
             <CloudUpload className="h-7 w-7 text-primary" />
           </div>
@@ -66,7 +119,13 @@ export function FileUpload() {
           <p className="mb-4 text-sm text-muted-foreground">
             Upload Company Documents (.zip, or multiple .pdf files)
           </p>
-          <Button variant="outline" size="sm" className="font-medium">
+          <Button
+            variant="outline"
+            size="sm"
+            className="font-medium"
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+          >
             Browse Files
           </Button>
         </div>
