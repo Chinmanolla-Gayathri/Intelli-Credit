@@ -10,6 +10,8 @@ import json
 import pickle
 import pandas as pd
 import numpy as np
+from fastapi import Response
+from fpdf import FPDF
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from pymongo import MongoClient
@@ -52,11 +54,11 @@ model = genai.GenerativeModel('gemini-2.5-flash')
 
 # 3. Load ML Models and Meta Data
 print("Loading ML Models...")
-with open("intelli_credit_clf_v2.pkl", "rb") as f:
+with open("../intelli_credit_clf.pkl", "rb") as f:
     clf_v2 = pickle.load(f)
-with open("intelli_credit_reg.pkl", "rb") as f:
+with open("../intelli_credit_reg.pkl", "rb") as f:
     reg = pickle.load(f)
-with open("intelli_credit_meta.json", "r") as f:
+with open("../intelli_credit_meta.json", "r") as f:
     meta = json.load(f)
 
 
@@ -306,3 +308,36 @@ def get_stats():
     high_risk_count = history_collection.count_documents({"risk_score": {"$gte": 75}})
     approval_rate = round((approved_count / total_appraisals) * 100, 1)
     return {"status": "success", "data": {"total": total_appraisals, "approval_rate": approval_rate, "high_risk": high_risk_count}}
+@app.get("/download-cam/{company_name}")
+async def download_cam(company_name: str):
+    report_data = history_collection.find_one(
+        {"company_name": company_name}, 
+        sort=[("date", -1)]
+    )
+    
+    if not report_data:
+        return Response(content="Report not found", status_code=404)
+
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # --- FIX START: Clean the text for PDF compatibility ---
+    # We replace the Unicode Rupee symbol with 'INR' to prevent the Encoding Error
+    raw_text = report_data.get("five_cs", "") or report_data.get("ai_analysis", "")
+    safe_text = raw_text.replace("₹", "INR ").replace("\u20b9", "INR ") 
+    # --- FIX END ---
+
+    pdf.set_font("Helvetica", 'B', 16)
+    pdf.cell(0, 10, "CREDIT APPRAISAL MEMO (CAM)", ln=True, align='C')
+    
+    pdf.ln(10)
+    pdf.set_font("Helvetica", size=12)
+    # Use multi_cell for the cleaned text
+    pdf.multi_cell(0, 8, txt=safe_text)
+    
+    pdf_output = pdf.output() 
+    return Response(
+        content=pdf_output, 
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={company_name}_CAM.pdf"}
+    )
