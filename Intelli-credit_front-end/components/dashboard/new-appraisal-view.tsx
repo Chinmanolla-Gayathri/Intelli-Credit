@@ -1,7 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { Sparkles, Loader2, CheckCircle2, AlertTriangle, FileText } from "lucide-react"
+import jsPDF from "jspdf"
+import autoTable from "jspdf-autotable"
+import { Sparkles, Loader2, CheckCircle2, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { FileUpload } from "./file-upload"
@@ -147,11 +149,146 @@ export function NewAppraisalView() {
 
   const formatCurrencyInr = (value: number | undefined | null) => {
     if (value == null || Number.isNaN(Number(value))) return "₹0"
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(Number(value))
+    try {
+      return new Intl.NumberFormat("en-IN", {
+        style: "currency",
+        currency: "INR",
+        maximumFractionDigits: 0,
+      }).format(Number(value))
+    } catch {
+      return `₹${Number(value).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`
+    }
+  }
+
+  const downloadCamReport = () => {
+    if (!result) {
+      alert("No CAM report available to download.")
+      return
+    }
+
+    try {
+      const doc = new jsPDF()
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const marginX = 16
+      let currentY = 20
+
+      // Header - base64 logo and title
+      const logoBase64 =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOCAYAAAAfSC3RAAAALElEQVQ4T2NkoBAwUqifgYGB4T8jCDAxMZph0aJFYBVEM2GqAaNGjXqEAADEWQh8P+GZWQAAAABJRU5ErkJggg=="
+
+      try {
+        const logoWidth = 28
+        const logoHeight = 28
+        const logoX = pageWidth / 2 - logoWidth / 2
+        const logoY = 8
+        doc.addImage(logoBase64, "PNG", logoX, logoY, logoWidth, logoHeight)
+        currentY = logoY + logoHeight + 6
+      } catch {
+        // if logo fails, continue without blocking PDF generation
+        currentY = 20
+      }
+
+      doc.setFontSize(16)
+      doc.setFont("helvetica", "bold")
+      doc.text("INTELLI-CREDIT RISK ENGINE", pageWidth / 2, currentY, {
+        align: "center",
+      })
+      currentY += 6
+
+      // Horizontal separator under header
+      doc.setDrawColor(200)
+      doc.line(marginX, currentY, pageWidth - marginX, currentY)
+      currentY += 8
+
+      // Summary table
+      const summaryBody = [
+        [
+          result.company_name || "Unknown Company",
+          `${result.mock_risk_score ?? "N/A"}/100`,
+          formatCurrencyInr(result.recommended_limit_inr),
+          result.recommended_interest_rate_pct != null
+            ? `${result.recommended_interest_rate_pct}%`
+            : "N/A",
+        ],
+      ]
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [["Company Name", "Risk Score", "Loan Limit", "Interest Rate"]],
+        body: summaryBody,
+        styles: { fontSize: 12 },
+        headStyles: { fillColor: [22, 93, 255], fontSize: 12 },
+        theme: "grid",
+        margin: { left: marginX, right: marginX },
+      })
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const autoTableData: any = (doc as any).lastAutoTable
+      currentY = autoTableData?.finalY ? autoTableData.finalY + 8 : currentY + 30
+
+      const addSection = (title: string, text: string | undefined | null) => {
+        const safeText = text || "N/A"
+
+        doc.setFontSize(16)
+        doc.setFont("helvetica", "bold")
+        doc.setTextColor(30, 64, 175) // blue header
+
+        if (currentY > pageHeight - 30) {
+          doc.addPage()
+          currentY = 20
+        }
+        doc.text(title, marginX, currentY)
+        currentY += 8
+
+        doc.setFontSize(12)
+        doc.setFont("helvetica", "normal")
+        doc.setTextColor(0, 0, 0)
+
+        const wrappedText = doc.splitTextToSize(
+          safeText,
+          pageWidth - marginX * 2,
+        )
+
+        wrappedText.forEach((line: string) => {
+          if (currentY > pageHeight - 20) {
+            doc.addPage()
+            currentY = 20
+          }
+          doc.text(line, marginX, currentY)
+          currentY += 6
+        })
+
+        currentY += 4
+      }
+
+      addSection("Executive Summary", result.ai_analysis)
+      addSection("The Five C's of Credit", result.five_cs_summary)
+      addSection("Secondary Web Research", result.ai_analysis)
+
+      // Footer on every page
+      const generatedOn = new Date().toLocaleString()
+      const pageCount = doc.getNumberOfPages()
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i)
+        const h = doc.internal.pageSize.getHeight()
+        doc.setFontSize(8)
+        doc.setTextColor(120)
+        doc.text(
+          `Generated on ${generatedOn} | Confidential Banking Document`,
+          marginX,
+          h - 10,
+        )
+      }
+
+      const filename = `${
+        (result.company_name || "CAM_Report").replace(/[^\w\-]+/g, "_")
+      }_CAM_Report.pdf`
+      doc.save(filename)
+    } catch (error) {
+      console.error("Failed to generate CAM PDF", error)
+      alert("Unable to generate CAM PDF.")
+    }
   }
 
   return (
@@ -231,14 +368,33 @@ export function NewAppraisalView() {
               </div>
             </div>
           </CardContent>
-          <CardFooter className="bg-slate-50 border-t border-slate-100 flex flex-wrap justify-end gap-2 p-4">
-            <Button variant="outline" className="border-green-600 text-green-700 hover:bg-green-50" onClick={() => handleFinalDecision("Approved")}>Approve</Button>
-            <Button variant="outline" className="border-red-600 text-red-700 hover:bg-red-50" onClick={() => handleFinalDecision("Rejected")}>Reject</Button>
-            <Button variant="outline" onClick={handleDownloadMaskedData}>Masked Logs</Button>
-            
-            {/* THIS IS THE UPDATED BUTTON */}
-            <Button variant="default" className="gap-2" onClick={handleDownloadPDF}>
-              <FileText className="h-4 w-4" /> Download Full CAM Report (PDF)
+          <CardFooter className="bg-slate-50 border-t border-slate-100 flex flex-wrap justify-end gap-2">
+            <Button
+              variant="outline"
+              className="border-green-600 text-green-700 hover:bg-green-50"
+              onClick={() => handleFinalDecision("Approved")}
+            >
+              Approve
+            </Button>
+            <Button
+              variant="outline"
+              className="border-red-600 text-red-700 hover:bg-red-50"
+              onClick={() => handleFinalDecision("Rejected")}
+            >
+              Reject
+            </Button>
+            <Button
+              variant="outline"
+              className="text-muted-foreground hover:bg-muted/40"
+              onClick={() => handleFinalDecision("Discard")}
+            >
+              Discard
+            </Button>
+            <Button variant="outline" onClick={handleDownloadMaskedData}>
+              Download Masked Data
+            </Button>
+            <Button variant="default" onClick={downloadCamReport}>
+              Download Full CAM Report (PDF)
             </Button>
           </CardFooter>
         </Card>
